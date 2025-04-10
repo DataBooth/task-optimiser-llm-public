@@ -1,0 +1,3 @@
+id,name,due_date,duration,priority,ordinal,project,split_allowed,fixed,min_split_time,total_work_minutes,constraint,constraint_date,dtstart_offset
+1,Write Report,2025-04-12T18:00,2.0,5,1,Project A,TRUE,FALSE,30,120,end_by,2025-04-12T18:00,0
+2,Team Meeting,2025-04-10T10:00,1.0,3,2,Project B,FALSE,FALSE,NULL,60,NULL,NULL,0
