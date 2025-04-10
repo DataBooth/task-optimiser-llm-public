@@ -92,20 +92,26 @@ class ScheduledTask(Task):
         scheduled_duration_minutes=None,
     ):
         super().__init__(
-            id,
-            name,
-            due_date,
-            duration,
-            priority,
-            ordinal,
-            project,
-            split_allowed,
-            fixed,
-            min_split_time,
-            total_work_minutes,
-            constraint,
-            constraint_date,
-            dtstart_offset,
+            id=id,
+            name=name,
+            due_date=due_date,
+            duration=duration,
+            priority=priority,
+            ordinal=ordinal,
+            project=project,
+            split_allowed=split_allowed,
+            fixed=fixed,
+            min_split_time=min_split_time,
+            total_work_minutes=total_work_minutes,
+            constraint=constraint,
+            constraint_date=constraint_date,
+            dtstart_offset=dtstart_offset,
+            scheduled_start=scheduled_start,
+            scheduled_end=scheduled_end,
+            work_code=work_code,
+            cycle_time_events=cycle_time_events,
+            missed_constraints=missed_constraints,
+            scheduled_duration_minutes=scheduled_duration_minutes,
         )
         self.scheduled_start = scheduled_start
         self.scheduled_end = scheduled_end
@@ -145,14 +151,14 @@ class ScheduledTask(Task):
 
 
 class Appointment:
-    def __init__(self, start_time, end_time, title=None, description=None):
+    def __init__(self, id, event_name, start_time, end_time):
+        self.id = id
+        self.event_name = event_name
         self.start_time = start_time
         self.end_time = end_time
-        self.title = title
-        self.description = description
 
     def __repr__(self):
-        return f"Appointment(start_time={self.start_time}, end_time={self.end_time}, title={self.title}, description={self.description})"
+        return f"Appointment(id={self.id}, event_name={self.event_name}, start_time={self.start_time}, end_time={self.end_time})"
 
     def to_dict(self):
         return self.__dict__
@@ -260,31 +266,24 @@ class WorkingHours:
 
 
 class Calendar:
-    def __init__(self, id, name, working_hours=None, appointments=None):
+    def __init__(self, id, name, appointments=None):
         self.id = id
         self.name = name
-        self.working_hours = working_hours if working_hours is not None else []
         self.appointments = appointments if appointments is not None else []
 
     def __repr__(self):
-        return f"Calendar(id={self.id}, name={self.name}, working_hours={self.working_hours}, appointments={self.appointments})"
+        return f"Calendar(id={self.id}, name={self.name}, appointments={self.appointments})"
 
     def to_dict(self):
         return {
             "id": self.id,
             "name": self.name,
-            "working_hours": [wh.to_dict() for wh in self.working_hours],
             "appointments": [app.to_dict() for app in self.appointments],
         }
 
     @classmethod
     def from_dict(cls, data):
-        working_hours_data = data.get("working_hours", [])
         appointments_data = data.get("appointments", [])
-
-        working_hours = [
-            WorkingHours.from_dict(wh_data) for wh_data in working_hours_data
-        ]
         appointments = [
             Appointment.from_dict(app_data)
             if "recurrence" not in app_data
@@ -292,12 +291,7 @@ class Calendar:
             for app_data in appointments_data
         ]
 
-        return cls(
-            id=data["id"],
-            name=data["name"],
-            working_hours=working_hours,
-            appointments=appointments,
-        )
+        return cls(id=data["id"], name=data["name"], appointments=appointments)
 
     def to_json(self):
         return json.dumps(self.to_dict())
@@ -327,7 +321,7 @@ class TaskSchedulerInput:
     @classmethod
     def from_dict(cls, data):
         tasks_data = data.get("tasks", [])
-        tasks = [Task.from_dict(task_data) for task_data in tasks_data]
+        tasks = [Task.from_dict(task_data) for task_data in tasks]
         calendar_data = data.get("calendar", {})
         calendar = Calendar.from_dict(calendar_data)
         preferences = data.get("preferences", {})
@@ -414,7 +408,9 @@ def load_calendar_entries_from_csv(filename="calendar_entries.csv", data_dir="da
         with open(filepath, mode="r") as file:
             csv_file = csv.DictReader(file)
             for row in csv_file:
-                calendar_entries.append(CalendarEntry(**row))
+                calendar_entries.append(
+                    Appointment(**row)
+                )  # Use Appointment class here
         logger.info(f"Loaded {len(calendar_entries)} calendar entries from {filepath}")
     except Exception as e:
         logger.error(f"Error loading calendar entries from CSV: {e}")
@@ -506,9 +502,36 @@ def query_ollama(prompt, model="llama2"):
 
 
 def is_ollama_model_available(model_name):
+    """
+    Checks if a specific model is available in Ollama.
+    Args:
+        model_name (str): The name of the model to check.
+    Returns:
+        bool: True if the model is available, False otherwise.
+    """
     try:
-        models = ollama.list()
-        return any(model["name"] == model_name for model in models["models"])
+        # Fetch the list of available models
+        models_data = ollama.list()
+
+        # Debugging: Log the raw response to understand its structure
+        logger.debug(f"Ollama list response: {models_data}")
+
+        # Check if 'models' key exists and is a list
+        if "models" in models_data and isinstance(models_data["models"], list):
+            # Extract model names safely
+            model_names = [
+                model.model if hasattr(model, "model") else "Unknown"
+                for model in models_data["models"]
+            ]  # HERE
+            logger.info(f"Available Ollama models: {model_names}")
+            return model_name in model_names
+        else:
+            # Log unexpected structure
+            logger.error(
+                f"Unexpected response format from ollama.list(): {models_data}"
+            )
+            return False
+
     except Exception as e:
         logger.error(f"Error checking Ollama model availability: {e}")
         return False
@@ -764,7 +787,9 @@ def parse_schedule(response):
         return None
 
 
-def optimize_schedule(model="llama2", data_dir="data"):
+def optimize_schedule(
+    model="llama2:latest", data_dir="data"
+):  # specify 'llama2:latest'
     logger.info("Starting schedule optimization")
 
     # Check if the model is available
@@ -808,7 +833,9 @@ def main():
     logger.info("Starting Task Scheduling Optimization")
 
     # Run the workflow and print results
-    optimized_schedule = optimize_schedule(model="llama2", data_dir="data")
+    optimized_schedule = optimize_schedule(
+        model="llama2:latest", data_dir="data"
+    )  # specify 'llama2:latest'
 
     if optimized_schedule:
         print("Optimized Schedule:")

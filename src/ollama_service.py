@@ -3,30 +3,38 @@ import ollama
 from loguru import logger
 
 
-def is_ollama_running():
+def is_ollama_model_available(model_name):
     """
-    Checks if Ollama is running by trying to ping the server.
+    Checks if a specific model is available in Ollama.
+    Args:
+        model_name (str): The name of the model to check.
     Returns:
-        bool: True if Ollama is running, False otherwise.
+        bool: True if the model is available, False otherwise.
     """
     try:
-        result = subprocess.run(
-            ["ollama", "list"], capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            logger.info("Ollama is running.")
-            return True
+        # Fetch the list of available models
+        models_data = ollama.list()
+
+        # Debugging: Log the raw response to understand its structure
+        logger.debug(f"Ollama list response: {models_data}")
+
+        # Check if 'models' key exists and is a list
+        if "models" in models_data and isinstance(models_data["models"], list):
+            # Extract model names safely
+            model_names = [
+                model.get("name", "Unknown") for model in models_data["models"]
+            ]
+            logger.info(f"Available Ollama models: {model_names}")
+            return model_name in model_names
         else:
-            logger.warning(f"Ollama is not running (exit code {result.returncode}).")
+            # Log unexpected structure
+            logger.error(
+                f"Unexpected response format from ollama.list(): {models_data}"
+            )
             return False
-    except FileNotFoundError:
-        logger.error("Ollama is not installed or not in PATH.")
-        return False
-    except subprocess.TimeoutExpired:
-        logger.warning("Ollama is not responding in a timely manner.")
-        return False
+
     except Exception as e:
-        logger.error(f"Error checking Ollama status: {e}")
+        logger.error(f"Error checking Ollama model availability: {e}")
         return False
 
 
