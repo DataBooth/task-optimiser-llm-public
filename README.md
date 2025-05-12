@@ -1,4 +1,4 @@
-`task-optimiser-llm-public`**
+**`task-optimiser-llm-public`**
 
 # Task Optimiser LLM
 
