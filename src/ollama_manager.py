@@ -5,8 +5,12 @@ from loguru import logger
 
 
 class OllamaManager:
-    def __init__(self, model_name="llama2"):
+    def __init__(self, model_name="llama2", api_mode="native"):
+        """
+        api_mode: "native" (default) or "openai"
+        """
         self.model_name = model_name
+        self.api_mode = api_mode
         logger.add("ollama_manager.log", rotation="500 MB", level="INFO")
 
     def is_ollama_running(self):
@@ -46,17 +50,12 @@ class OllamaManager:
                     f"Failed to start Ollama using brew services (exit code {result.returncode}): {result.stderr}"
                 )
                 # Fallback to direct serve
-                result = subprocess.run(
-                    ["ollama", "serve"], capture_output=True, text=True
-                )
-                if result.returncode == 0:
-                    logger.info("Ollama started successfully using 'ollama serve'.")
-                    return True
-                else:
-                    logger.error(
-                        f"Failed to start Ollama using 'ollama serve' (exit code {result.returncode}): {result.stderr}"
-                    )
-                    return False
+                serve_cmd = ["ollama", "serve"]
+                if self.api_mode == "openai":
+                    serve_cmd.append("--api=openai")
+                result = subprocess.Popen(serve_cmd)
+                logger.info(f"Ollama started using '{' '.join(serve_cmd)}'.")
+                return True
         except FileNotFoundError:
             logger.error("Ollama is not installed or not in PATH.")
             return False
@@ -67,13 +66,11 @@ class OllamaManager:
     def get_available_models(self):
         try:
             models_data = ollama.list()
-            # Print the raw data for debugging
-            logger.debug("DEBUG: models_data =", models_data)
+            logger.debug(f"DEBUG: models_data = {models_data}")
             if "models" in models_data and isinstance(models_data["models"], list):
-                # Try 'model' or 'name' or print the whole object if unsure
                 model_names = [
-                    model.get("name") or model.get("model") or str(model)
-                    for model in models_data["models"]
+                    m.get("name") or m.get("model") or m.get("family") or str(m)
+                    for m in models_data["models"]
                 ]
                 logger.info(f"Available Ollama models: {model_names}")
                 return model_names
@@ -100,10 +97,11 @@ class OllamaManager:
 
     def ensure_ollama_and_model(self):
         if not self.is_ollama_running():
+            logger.info("Ollama not running. Attempting to start Ollama...")
             if not self.start_ollama():
                 logger.error("Failed to start Ollama.")
                 return False
-            time.sleep(5)  # Give Ollama time to start
+            time.sleep(10)  # Give Ollama time to start
         if not self.get_model():
             logger.error(f"Failed to get model '{self.model_name}'.")
             return False
@@ -121,17 +119,14 @@ class OllamaManager:
 
 
 def main():
-    # Instantiate the manager with your preferred model
-    manager = OllamaManager(model_name="qwen2.5:0.5b")
+    # Choose api_mode="openai" if you want to use the OpenAI-compatible endpoint
+    manager = OllamaManager(model_name="qwen2.5:0.5b", api_mode="openai")
 
     logger.info("Checking if Ollama is running...")
     if not manager.is_ollama_running():
         logger.info("Ollama not running. Attempting to start Ollama...")
         if manager.start_ollama():
             logger.info("Ollama started successfully.")
-            # Wait for Ollama to finish starting up
-            import time
-
             time.sleep(5)
         else:
             logger.error("Failed to start Ollama. Check logs for details.")
@@ -141,11 +136,6 @@ def main():
 
     print("\nListing available models:")
     models = manager.get_available_models()
-    # if models:
-    #     for model in models:
-    #         print(f" - {model}")
-    # else:
-    #     logger.error("No models found or failed to retrieve models.")
 
     logger.info(f"\nEnsuring model '{manager.model_name}' is available...")
     if not manager.get_model():

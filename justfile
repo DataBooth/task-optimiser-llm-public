@@ -24,3 +24,14 @@ test-ollama-docker-local-llama2:
     -H "Content-Type: application/json" \
     -d '{"model": "llama2", "prompt": "What is the capital of Australia?"}'
     @echo "Test completed."
+
+
+# Check if any Ollama process is running
+check-ollama:
+    @if pgrep -fa 'ollama' > /dev/null; then \
+        echo "Ollama process is running:"; \
+        pgrep -fl 'ollama'; \
+    else \
+        echo "No Ollama process running."; \
+    fi
+
